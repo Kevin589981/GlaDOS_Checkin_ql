@@ -40,5 +40,6 @@ jobs:
           SMTP_EMAIL: ${{ secrets.SMTP_EMAIL }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SMTP_NAME: ${{ secrets.SMTP_NAME }}
+          cookie1: ${{ secrets.cookie1 }}
         run: |
           python3 ./checkin.py
