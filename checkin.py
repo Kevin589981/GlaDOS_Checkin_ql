@@ -17,6 +17,9 @@ import sys
 import time
 
 # 获取GlaDOS账号Cookie
+
+from datetime import datetime, timedelta
+
 def get_cookies():
     if os.environ.get("GR_COOKIE"):
         print("已获取并使用Env环境 Cookie")
@@ -32,10 +35,15 @@ def get_cookies():
         if len(cookies) == 0:
             print("未获取到正确的GlaDOS账号Cookie")
             return
+    
     print(f"共获取到{len(cookies)}个GlaDOS账号Cookie\n")
-    print(f"脚本执行时间(北京时区): {time.strftime('%Y/%m/%d %H:%M:%S', time.datetime.utcnow()+time.timedelta(hours=8))}\n")
+    
+    # 获取北京时间
+    utc_now = datetime.utcnow()
+    beijing_time = utc_now + timedelta(hours=8)
+    print(f"脚本执行时间(北京时区): {beijing_time.strftime('%Y/%m/%d %H:%M:%S')}\n")
+    
     return cookies
-
 
 # 加载通知服务
 def load_send():
