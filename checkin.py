@@ -33,7 +33,7 @@ def get_cookies():
             print("未获取到正确的GlaDOS账号Cookie")
             return
     print(f"共获取到{len(cookies)}个GlaDOS账号Cookie\n")
-    print(f"脚本执行时间(北京时区): {time.strftime('%Y/%m/%d %H:%M:%S', time.datetime.utcnow()+time.timedelta(hours=8)}\n")
+    print(f"脚本执行时间(北京时区): {time.strftime('%Y/%m/%d %H:%M:%S', time.datetime.utcnow()+time.timedelta(hours=8))}\n")
     return cookies
 
 
