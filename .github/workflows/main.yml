@@ -41,4 +41,4 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SMTP_NAME: ${{ secrets.SMTP_NAME }}
         run: |
-          python3 ./main.py
+          python3 ./checkin.py
