@@ -9,16 +9,12 @@ new Env('GLaDOS签到');
 Update: 2023/7/27
 """
 
-
 import requests
 import json
 import os
-import sys
-import time
-
-# 获取GlaDOS账号Cookie
-
 from datetime import datetime, timedelta
+from dataclasses import dataclass
+from typing import List, Optional
 
 def get_cookies():
     if os.environ.get("GR_COOKIE"):
@@ -38,92 +34,161 @@ def get_cookies():
     
     print(f"共获取到{len(cookies)}个GlaDOS账号Cookie\n")
     
+    return cookies
+
+@dataclass
+class CheckinResult:
+    """签到结果数据模型"""
+    email: str
+    success: bool
+    message: str
+    remaining_days: str
+    error: Optional[str] = None
+
+
+class GlaDOSCheckin:
+    """GlaDOS签到客户端"""
+    
+    def __init__(self, cookies: List[str]):
+        """初始化签到客户端"""
+        self.cookies = cookies
+        self.checkin_url = "https://glados.rocks/api/user/checkin"
+        self.state_url = "https://glados.rocks/api/user/status"
+        self.referer = 'https://glados.rocks/console/checkin'
+        self.origin = "https://glados.rocks"
+        self.useragent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.75 Safari/537.36"
+        self.payload = {'token': 'glados.one'}
+    
+    def checkin(self, cookie: str) -> CheckinResult:
+        """执行单个账号签到"""
+        try:
+            # 执行签到请求
+            checkin_response = requests.post(
+                self.checkin_url,
+                headers={
+                    'cookie': cookie,
+                    'referer': self.referer,
+                    'origin': self.origin,
+                    'user-agent': self.useragent,
+                    'content-type': 'application/json;charset=UTF-8'
+                },
+                data=json.dumps(self.payload)
+            )
+            
+            # 获取账号状态
+            state_response = requests.get(
+                self.state_url,
+                headers={
+                    'cookie': cookie,
+                    'referer': self.referer,
+                    'origin': self.origin,
+                    'user-agent': self.useragent
+                }
+            )
+            
+            # 解析响应
+            checkin_data = checkin_response.json()
+            state_data = state_response.json()
+            
+            message = checkin_data['message']
+            email = state_data['data']['email']
+            remaining_days = state_data['data']['leftDays'].split('.')[0]
+            
+            return CheckinResult(
+                email=email,
+                success=True,
+                message=message,
+                remaining_days=remaining_days
+            )
+            
+        except requests.RequestException as e:
+            return CheckinResult(
+                email="未知",
+                success=False,
+                message="网络请求失败",
+                remaining_days="0",
+                error=f"网络错误: {str(e)}"
+            )
+        except (KeyError, json.JSONDecodeError) as e:
+            return CheckinResult(
+                email="未知",
+                success=False,
+                message="解析响应失败",
+                remaining_days="0",
+                error=f"解析错误: {str(e)}"
+            )
+        except Exception as e:
+            return CheckinResult(
+                email="未知",
+                success=False,
+                message="签到失败",
+                remaining_days="0",
+                error=f"未知错误: {str(e)}"
+            )
+    
+    def batch_checkin(self) -> List[CheckinResult]:
+        """批量执行多账号签到"""
+        results = []
+        for cookie in self.cookies:
+            if cookie and cookie.strip():  # 跳过空的cookie
+                result = self.checkin(cookie.strip())
+                results.append(result)
+        return results
+
+
+def format_checkin_results(results: List[CheckinResult]) -> str:
+    """格式化签到结果为通知内容"""
+    if not results:
+        return "签到失败，请检查账户信息以及网络环境"
+    
+    contents = []
+    for result in results:
+        if result.success:
+            content = f"账号：{result.email}\n签到结果：{result.message}\n剩余天数：{result.remaining_days}\n"
+        else:
+            content = f"账号：{result.email}\n签到结果：{result.message}\n错误信息：{result.error}\n"
+        contents.append(content)
+    
+    return "".join(contents)
+
+
+def run_checkin() -> str:
+    """执行签到任务并返回格式化结果"""
+    cookies = get_cookies()
+    if not cookies:
+        return "签到失败，请检查账户信息以及网络环境"
+    
     # 获取北京时间
-    utc_now = datetime.utcnow()
+    from datetime import timezone
+    utc_now = datetime.now(timezone.utc)
     beijing_time = utc_now + timedelta(hours=8)
     print(f"脚本执行时间(北京时区): {beijing_time.strftime('%Y/%m/%d %H:%M:%S')}\n")
     
-    return cookies
-
-# 加载通知服务
-def load_send():
-    cur_path = os.path.abspath(os.path.dirname(__file__))
-    sys.path.append(cur_path)
-    if os.path.exists(cur_path + "/sendNotify.py"):
-        try:
-            from sendNotify import send
-            return send
-        except Exception as e:
-            print(f"加载通知服务失败：{e}")
-            return None
-    else:
-        print("加载通知服务失败")
-        return None
-
-
-# GlaDOS签到
-def checkin(cookie):
-    checkin_url= "https://glados.rocks/api/user/checkin"
-    state_url= "https://glados.rocks/api/user/status"
-    referer = 'https://glados.rocks/console/checkin'
-    origin = "https://glados.rocks"
-    useragent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.75 Safari/537.36"
-    payload={
-        'token': 'glados.one'
-    }
-    try:
-        checkin = requests.post(checkin_url,headers={
-            'cookie': cookie ,
-            'referer': referer,
-            'origin':origin,
-            'user-agent':useragent,
-            'content-type':'application/json;charset=UTF-8'},data=json.dumps(payload))
-        state =  requests.get(state_url,headers={
-            'cookie': cookie ,
-            'referer': referer,
-            'origin':origin,
-            'user-agent':useragent})
-    except Exception as e:
-        print(f"签到失败，请检查网络：{e}")
-        return None, None, None
+    # 创建签到客户端并执行批量签到
+    checkin_client = GlaDOSCheckin(cookies)
+    results = checkin_client.batch_checkin()
     
-    try:
-        mess = checkin.json()['message']
-        mail = state.json()['data']['email']
-        time = state.json()['data']['leftDays'].split('.')[0]
-    except Exception as e:
-        print(f"解析登录结果失败：{e}")
-        return None, None, None
+    # 打印每个结果
+    for result in results:
+        if result.success:
+            print(f"账号：{result.email}\n签到结果：{result.message}\n剩余天数：{result.remaining_days}\n")
+        else:
+            print(f"账号：{result.email}\n签到失败：{result.message}\n错误：{result.error}\n")
     
-    return mess, time, mail
-
-
-# 执行签到任务
-def run_checkin():
-    contents = []
-    cookies = get_cookies()
-    if not cookies:
-        return ""
-
-    for cookie in cookies:
-        ret, remain, email = checkin(cookie)
-        if not ret:
-            continue
-            
-        content = f"账号：{email}\n签到结果：{ret}\n剩余天数：{remain}\n"
-        print(content)
-        contents.append(content)
-
-    contents_str = "".join(contents)
-    return contents_str
+    # 格式化并返回结果
+    return format_checkin_results(results)
 
 
 if __name__ == '__main__':
-    title = "GlaDOS签到通知"
-    contents = run_checkin()
-    send_notify = load_send()
-    if send_notify:
-        if contents =='':
-            contents=f'签到失败，请检查账户信息以及网络环境'
-            print(contents)
-        send_notify(title, contents)
+    # 执行签到并输出结果
+    result = run_checkin()
+    
+    # 设置GitHub Actions输出
+    if os.getenv('GITHUB_ACTIONS'):
+        # 将结果输出到GitHub Actions环境变量
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+            # 转义换行符以便在GitHub Actions中正确处理
+            escaped_result = result.replace('\n', '\\n').replace('\r', '\\r')
+            f.write(f"checkin_result={escaped_result}\n")
+    
+    print("签到任务完成")

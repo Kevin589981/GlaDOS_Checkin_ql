@@ -26,7 +26,8 @@ _✨ 基于 [Python](https://www.python.org/) 实现的[GLaDOS](https://github.c
 - 支持多账户
 - 支持本地部署
 - 支持部署在[青龙面板](https://github.com/whyour/qinglong)
-- 支持多种通知推送方式
+- 支持 GitHub Actions 自动化部署
+- 支持独立通知服务模块
 - [更新日志](#更新日志)
 
 ## 简单介绍一下GLaDOS
@@ -107,6 +108,50 @@ ql repo https://github.com/hennessey-v/GlaDOS_Checkin_ql.git "checkin.py" "backU
 <summary>四、运行脚本查看运行结果</summary>
 
 ![cookie](assets/push_detail.png)
+
+</details>
+
+### GitHub Actions 部署 (推荐)
+
+<details>
+<summary>一、Fork 本仓库</summary>
+
+- 点击右上角的 Fork 按钮，将本仓库 Fork 到你的 GitHub 账户下
+
+</details>
+
+<details>
+<summary>二、配置 GitHub Secrets</summary>
+
+在你 Fork 的仓库中，进入 Settings > Secrets and variables > Actions，添加以下 Secrets：
+
+**必需的 Secrets：**
+- `GR_COOKIE`: GLaDOS 账户的 Cookie，格式为 `koa:sess=xxxxxxxxx; koa:sess.sig=xxxx;`
+  - 多账号可以用 `&` 或换行符分隔
+- `REPO_ACCESS_TOKEN`: GitHub Personal Access Token，用于触发通知服务
+  - 需要有 `repo` 权限
+- `NOTIFICATION_REPO`: 通知服务仓库地址，格式为 `username/notification-service`
+
+**可选的 Secrets（兼容旧版本）：**
+- `cookie1`: 单个账户的 Cookie（如果设置了 GR_COOKIE 则优先使用 GR_COOKIE）
+
+</details>
+
+<details>
+<summary>三、启用 GitHub Actions</summary>
+
+- 进入你 Fork 的仓库，点击 Actions 标签页
+- 如果看到提示需要启用 Actions，点击启用
+- 工作流会在每天北京时间 6:00 自动运行
+- 你也可以在 Actions 页面手动触发运行
+
+</details>
+
+<details>
+<summary>四、查看运行结果</summary>
+
+- 在 Actions 页面可以查看每次运行的详细日志
+- 签到完成后会自动触发通知服务发送通知
 
 </details>
 
