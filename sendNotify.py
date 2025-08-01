@@ -294,7 +294,7 @@ def pushdeer(title: str, content: str) -> None:
     data = {"text": title, "desp": content, "type": "markdown",
             "pushkey": push_config.get("DEER_KEY")}
     url = 'https://api2.pushdeer.com/message/push'
-    if push_config.get("DEER_URL"):
+    if push_config.get("DEER_URL") and push_config.get("DEER_URL")!="":
         url = push_config.get("DEER_URL")
 
     response = requests.post(url, data=data).json()
