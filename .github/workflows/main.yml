@@ -41,26 +41,26 @@ jobs:
           cache-dependency-path: |
             requirements.txt
 
-      # -----------------------------------------------------------
-      # 3. 额外缓存整个虚拟环境（venv）
-      #    这样即使 pip 缓存失效，也能秒级恢复
-      # -----------------------------------------------------------
-      - name: Cache venv
-        uses: actions/cache@v4
-        id: cache-venv
-        with:
-          path: ./venv            # 虚拟环境目录
-          key: venv-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+      # # -----------------------------------------------------------
+      # # 3. 额外缓存整个虚拟环境（venv）
+      # #    这样即使 pip 缓存失效，也能秒级恢复
+      # # -----------------------------------------------------------
+      # - name: Cache venv
+      #   uses: actions/cache@v4
+      #   id: cache-venv
+      #   with:
+      #     path: ./venv            # 虚拟环境目录
+      #     key: venv-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
 
       # -----------------------------------------------------------
       # 4. 安装依赖
       #    仅在缓存未命中时执行（cache-hit != 'true'）
       # -----------------------------------------------------------
       - name: Install dependencies
-        if: steps.cache-venv.outputs.cache-hit != 'true'
+        # if: steps.cache-venv.outputs.cache-hit != 'true'
         run: |
-          python -m venv venv
-          source venv/bin/activate
+          # python -m venv venv
+          # source venv/bin/activate
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
