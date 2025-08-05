@@ -78,7 +78,7 @@ jobs:
           GR_COOKIE: ${{ secrets.GR_COOKIE }}
           cookie1: ${{ secrets.cookie1 }}
         run: |
-          source venv/bin/activate
+          # source venv/bin/activate
           python3 ./checkin.py
 
       # -----------------------------------------------------------
