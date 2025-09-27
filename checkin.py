@@ -161,7 +161,7 @@ def format_checkin_results(results: List[CheckinResult]) -> str:
         # -----------------------------
 
         if result.success:
-            content = f"账号：{result.email}\n签到结果：{result.message}\n{balance_info_str}剩余天数：{result.remaining_days}\n"
+            content = f"账号：{result.email}\n签到结果：{result.message}\n{balance_info_str}\n剩余天数：{result.remaining_days}\n"
         else:
             content = f"账号：{result.email}\n签到结果：{result.message}\n错误信息：{result.error}\n"
         contents.append(content)
