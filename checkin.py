@@ -14,7 +14,7 @@ import json
 import os
 from datetime import datetime, timedelta
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 def get_cookies():
     if os.environ.get("GR_COOKIE"):
@@ -26,11 +26,17 @@ def get_cookies():
         else:
             cookies = [os.environ["GR_COOKIE"]]
     else:
-        from config import Cookies
-        cookies = Cookies
-        if len(cookies) == 0:
-            print("未获取到正确的GlaDOS账号Cookie")
-            return
+        # Fallback to a local config file if needed, for local testing.
+        # Ensure you have a config.py file with `Cookies = ["your_cookie_here"]`
+        try:
+            from config import Cookies
+            cookies = Cookies
+            if len(cookies) == 0:
+                print("未获取到正确的GlaDOS账号Cookie")
+                return
+        except ImportError:
+            print("未找到config.py文件，且环境变量 GR_COOKIE 未设置。")
+            return []
     
     print(f"共获取到{len(cookies)}个GlaDOS账号Cookie\n")
     
@@ -43,11 +49,12 @@ class CheckinResult:
     success: bool
     message: str
     remaining_days: str
+    balance_details: List[Dict[str, str]]  # 存储积分详情，例如 [{'info': 'checkin:2025-09-27', 'balance': '54.0'}]
     error: Optional[str] = None
 
 
 class GlaDOSCheckin:
-    """GlaDOS签到客户端"""
+    """GLaDOS签到客户端"""
     
     def __init__(self, cookies: List[str]):
         """初始化签到客户端"""
@@ -90,47 +97,50 @@ class GlaDOSCheckin:
             checkin_data = checkin_response.json()
             state_data = state_response.json()
             
-            message = checkin_data['message']
-            email = state_data['data']['email']
-            remaining_days = state_data['data']['leftDays'].split('.')[0]
+            message = checkin_data.get('message', '未知消息')
+            email = state_data.get('data', {}).get('email', '未知邮箱')
+            remaining_days = state_data.get('data', {}).get('leftDays', '0.0').split('.')[0]
             
+            # -- 新增代码：解析最近两次的积分和业务详情 --
+            balance_details = []
+            if 'list' in checkin_data and isinstance(checkin_data['list'], list):
+                for record in checkin_data['list'][:2]: # 最多获取两条记录
+                    if 'balance' in record and 'business' in record:
+                        try:
+                            # 解析业务信息
+                            business_parts = record['business'].split(':')
+                            # 拼接最后两部分，例如 "system:checkin:2025-09-27" -> "checkin:2025-09-27"
+                            business_info = f"{business_parts[-2]}:{business_parts[-1]}" if len(business_parts) >= 3 else record['business']
+
+                            # 解析积分，去除多余的小数点和0
+                            balance_float = float(record['balance'])
+                            balance_str = f"{balance_float:.0f}" if balance_float.is_integer() else str(balance_float)
+
+                            balance_details.append({'info': business_info, 'balance': balance_str})
+                        except (ValueError, IndexError):
+                            continue # 如果解析失败，则跳过此条记录
+            # ----------------------------------------
+
             return CheckinResult(
                 email=email,
                 success=True,
                 message=message,
-                remaining_days=remaining_days
+                remaining_days=remaining_days,
+                balance_details=balance_details
             )
             
         except requests.RequestException as e:
-            return CheckinResult(
-                email="未知",
-                success=False,
-                message="网络请求失败",
-                remaining_days="0",
-                error=f"网络错误: {str(e)}"
-            )
+            return CheckinResult(email="未知", success=False, message="网络请求失败", remaining_days="0", balance_details=[], error=f"网络错误: {str(e)}")
         except (KeyError, json.JSONDecodeError) as e:
-            return CheckinResult(
-                email="未知",
-                success=False,
-                message="解析响应失败",
-                remaining_days="0",
-                error=f"解析错误: {str(e)}"
-            )
+            return CheckinResult(email="未知", success=False, message="解析响应失败", remaining_days="0", balance_details=[], error=f"解析错误: {str(e)}")
         except Exception as e:
-            return CheckinResult(
-                email="未知",
-                success=False,
-                message="签到失败",
-                remaining_days="0",
-                error=f"未知错误: {str(e)}"
-            )
+            return CheckinResult(email="未知", success=False, message="签到失败", remaining_days="0", balance_details=[], error=f"未知错误: {str(e)}")
     
     def batch_checkin(self) -> List[CheckinResult]:
         """批量执行多账号签到"""
         results = []
         for cookie in self.cookies:
-            if cookie and cookie.strip():  # 跳过空的cookie
+            if cookie and cookie.strip():
                 result = self.checkin(cookie.strip())
                 results.append(result)
         return results
@@ -143,8 +153,15 @@ def format_checkin_results(results: List[CheckinResult]) -> str:
     
     contents = []
     for result in results:
+        # -- 新增代码：格式化积分详情 --
+        balance_info_str = ""
+        if result.balance_details:
+            details_lines = [f"{detail['info']}：{detail['balance']}" for detail in result.balance_details]
+            balance_info_str = "\n".join(details_lines) + "\n" # 在末尾添加一个换行符
+        # -----------------------------
+
         if result.success:
-            content = f"账号：{result.email}\n签到结果：{result.message}\n剩余天数：{result.remaining_days}\n"
+            content = f"账号：{result.email}\n签到结果：{result.message}\n{balance_info_str}剩余天数：{result.remaining_days}\n"
         else:
             content = f"账号：{result.email}\n签到结果：{result.message}\n错误信息：{result.error}\n"
         contents.append(content)
@@ -158,36 +175,36 @@ def run_checkin() -> str:
     if not cookies:
         return "签到失败，请检查账户信息以及网络环境"
     
-    # 获取北京时间
     from datetime import timezone
     utc_now = datetime.now(timezone.utc)
     beijing_time = utc_now + timedelta(hours=8)
     print(f"脚本执行时间(北京时区): {beijing_time.strftime('%Y/%m/%d %H:%M:%S')}\n")
     
-    # 创建签到客户端并执行批量签到
     checkin_client = GlaDOSCheckin(cookies)
     results = checkin_client.batch_checkin()
     
     # 打印每个结果
     for result in results:
+        # -- 新增代码：格式化积分详情用于打印 --
+        balance_info_str = ""
+        if result.balance_details:
+            details_lines = [f"{detail['info']}：{detail['balance']}" for detail in result.balance_details]
+            balance_info_str = "\n".join(details_lines) + "\n"
+        # ------------------------------------
+
         if result.success:
-            print(f"账号：{result.email}\n签到结果：{result.message}\n剩余天数：{result.remaining_days}\n")
+            print(f"账号：{result.email}\n签到结果：{result.message}\n{balance_info_str}剩余天数：{result.remaining_days}\n")
         else:
             print(f"账号：{result.email}\n签到失败：{result.message}\n错误：{result.error}\n")
     
-    # 格式化并返回结果
     return format_checkin_results(results)
 
 
 if __name__ == '__main__':
-    # 执行签到并输出结果
     result = run_checkin()
     
-    # 设置GitHub Actions输出
     if os.getenv('GITHUB_ACTIONS'):
-        # 将结果输出到GitHub Actions环境变量
         with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-            # 转义换行符以便在GitHub Actions中正确处理
             escaped_result = result.replace('\n', '\\n').replace('\r', '\\r')
             f.write(f"checkin_result={escaped_result}\n")
     
