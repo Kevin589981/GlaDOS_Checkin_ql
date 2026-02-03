@@ -157,7 +157,7 @@ def format_checkin_results(results: List[CheckinResult]) -> str:
         balance_info_str = ""
         if result.balance_details:
             details_lines = [f"{detail['info']}：{detail['balance']}" for detail in result.balance_details]
-            balance_info_str = "\n".join(details_lines) + "\n" # 在末尾添加一个换行符
+            balance_info_str = "\n\n".join(details_lines) + "\n" # 在末尾添加一个换行符
         # -----------------------------
 
         if result.success:
