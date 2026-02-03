@@ -59,10 +59,10 @@ class GlaDOSCheckin:
     def __init__(self, cookies: List[str]):
         """初始化签到客户端"""
         self.cookies = cookies
-        self.checkin_url = "https://glados.rocks/api/user/checkin"
-        self.state_url = "https://glados.rocks/api/user/status"
-        self.referer = 'https://glados.rocks/console/checkin'
-        self.origin = "https://glados.rocks"
+        self.checkin_url = "https://glados.cloud/api/user/checkin"
+        self.state_url = "https://glados.cloud/api/user/status"
+        self.referer = 'https://glados.cloud/console/checkin'
+        self.origin = "https://glados.cloud"
         self.useragent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.75 Safari/537.36"
         self.payload = {'token': 'glados.one'}
     
