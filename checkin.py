@@ -64,7 +64,7 @@ class GlaDOSCheckin:
         self.referer = 'https://glados.cloud/console/checkin'
         self.origin = "https://glados.cloud"
         self.useragent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.75 Safari/537.36"
-        self.payload = {'token': 'glados.one'}
+        self.payload = {'token': 'glados.cloud'}
     
     def checkin(self, cookie: str) -> CheckinResult:
         """执行单个账号签到"""
