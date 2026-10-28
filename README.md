@@ -40,6 +40,41 @@ GLaDOS家的优惠活动非常良心，新账号注册一段时间后基本都�
 
 ## 开始使用
 
+### 新版会话更新（2026-10）
+
+当前会话使用 `gld:sess` 和 `gld:sess.sig`。在 `https://glados.cloud` 登录后，
+从 Network 中成功的 `/api/user/status` 请求复制完整 Cookie。不要把旧 `koa:` 改名。
+后面的旧截图只用于说明取值位置。
+
+Actions 会接收签到和状态响应中的会话 `Set-Cookie`，后续请求立即使用新值；
+状态验证通过后，将更新后的全部账号加密写回原 Secret。无轮换时不改写 Secret。
+这只能接收服务端主动更新的凭据，不能恢复已到期/被撤销的会话，也不保证超过 14 天仍有效。
+
+在 Settings → Secrets and variables → Actions → **Secrets** 配置：
+
+| 名称 | 配置 |
+| --- | --- |
+| `GR_COOKIE` | 每个账号一行完整 Cookie；兼容 `&` 分隔。推荐换行，以保留 Cookie 值内的 `&`。 |
+| `GR_USER_AGENT` | 可选，生成会话的浏览器完整 UA。单行用于全部账号；不同浏览器按 Cookie 顺序每账号一行。未配置时沿用原默认 UA。 |
+| `COOKIE_UPDATE_TOKEN` | 推荐，Fine-grained PAT 限定本仓库，授予 **Secrets: Read and write** 和 **Actions: Read**。 |
+| `REPO_ACCESS_TOKEN` | 保留通知配置；未配置专用更新 Token 时也用于更新会话，原 classic PAT 的 `repo` 权限通常可用。 |
+| `NOTIFICATION_REPO` | 保留通知服务仓库地址。 |
+
+自动的 `GITHUB_TOKEN` 不能代替更新 Token。Token 放在 Secrets，不放在 Variables 或代码里。
+脚本通过 runner 自带的 `gh` 加密上传，Cookie 走标准输入，不写命令行参数或临时文件。
+新会话值注册为 Actions 日志掩码，只输出是否轮换及保存结果。
+
+工作流排队执行，开始和保存前检查 Secret 更新时间。检测到手工更新时停止旧会话回写。
+GitHub Secrets API 没有原子条件写入，运行期间请避免手工编辑 Secret；若已更新，等本次结束后重新运行。
+`cookie1` 单账号兼容配置会写回 `cookie1`，配置了 `GR_COOKIE` 时优先使用后者。
+
+Cookie 无效、设备不匹配、状态验证或保存失败都会使任务失败；部分账号失败时继续处理其余账号，
+保留失败账号原值，并保存其他账号已验证的新会话。通知仍会收到具体失败信息。
+
+本次自动持久化仅适配 GitHub Actions。本机/青龙检测到轮换时会提示重新获取并更新环境变量。
+青龙同步还需下载同目录的 `session_cookies.py`。
+实现参考：[zxc-1/Scripts 会话轮换修复](https://github.com/zxc-1/Scripts/pull/6)。
+
 ### 准备工作
 <details>
 <summary>账号的 cookie（并非仅此单一获取方式）</summary>
@@ -84,7 +119,7 @@ GLaDOS家的优惠活动非常良心，新账号注册一段时间后基本都�
 <details>
 <summary>二、在青龙面板中设置环境变量</summary>
 
-- 名称填入 **GR_COOKIE**， 值填入准备工作中账户的COOKIE。注：COOKIE需按 **'koa:sess=xxxxxxxxx; koa:sess.sig=xxxx;'** 的格式填入
+- 名称填入 **GR_COOKIE**，值使用完整 Cookie，例如 `gld:sess=会话值; gld:sess.sig=签名值`。
 - 多账号多次添加变量
 
 ![cookie](assets/GR_cookie.png)
@@ -96,11 +131,11 @@ GLaDOS家的优惠活动非常良心，新账号注册一段时间后基本都�
 
 - 国内环境拉取指令（带代理）
 ```
-ql repo https://ghproxy.com/https://github.com/hennessey-v/GlaDOS_Checkin_ql.git "checkin.py" "backUp|assets|README.md" "sendNotify.py"
+ql repo https://ghproxy.com/https://github.com/Kevin589981/GlaDOS_Checkin_ql.git "checkin.py" "backUp|assets|README.md|test_checkin.py" "sendNotify.py|session_cookies.py"
 ```
 - 国外环境拉取指令
 ```
-ql repo https://github.com/hennessey-v/GlaDOS_Checkin_ql.git "checkin.py" "backUp|assets|README.md" "sendNotify.py"
+ql repo https://github.com/Kevin589981/GlaDOS_Checkin_ql.git "checkin.py" "backUp|assets|README.md|test_checkin.py" "sendNotify.py|session_cookies.py"
 ```
 </details>
 
@@ -126,7 +161,7 @@ ql repo https://github.com/hennessey-v/GlaDOS_Checkin_ql.git "checkin.py" "backU
 在你 Fork 的仓库中，进入 Settings > Secrets and variables > Actions，添加以下 Secrets：
 
 **必需的 Secrets：**
-- `GR_COOKIE`: GLaDOS 账户的 Cookie，格式为 `koa:sess=xxxxxxxxx; koa:sess.sig=xxxx;`
+- `GR_COOKIE`: GLaDOS 账户的完整 Cookie，需要包含 `gld:sess` 与 `gld:sess.sig`
   - 多账号可以用 `&` 或换行符分隔
 - `REPO_ACCESS_TOKEN`: GitHub Personal Access Token，用于触发通知服务
   - 需要有 `repo` 权限
@@ -134,6 +169,7 @@ ql repo https://github.com/hennessey-v/GlaDOS_Checkin_ql.git "checkin.py" "backU
 
 **可选的 Secrets（兼容旧版本）：**
 - `cookie1`: 单个账户的 Cookie（如果设置了 GR_COOKIE 则优先使用 GR_COOKIE）
+- 自动更新 Token、浏览器 UA 及权限说明见上方“新版会话更新”。
 
 </details>
 
@@ -142,7 +178,7 @@ ql repo https://github.com/hennessey-v/GlaDOS_Checkin_ql.git "checkin.py" "backU
 
 - 进入你 Fork 的仓库，点击 Actions 标签页
 - 如果看到提示需要启用 Actions，点击启用
-- 工作流会在每天北京时间 6:00 自动运行
+- 工作流会在每天 UTC+8 07:00 附近自动运行，实际可能受 GitHub 调度延迟影响
 - 你也可以在 Actions 页面手动触发运行
 
 </details>
