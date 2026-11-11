@@ -32,6 +32,8 @@ def restore():
     data = client.response_data(response)
     print('status code:', data.get('code') if isinstance(data.get('code'), int) else 'non-integer')
     account = data.get('data')
+    observed_email = account.get('email') if isinstance(account, dict) else None
+    print('identity: account_object=', isinstance(account, dict), 'email_field=', isinstance(observed_email, str), 'matches_account1=', isinstance(observed_email, str) and observed_email.strip().lower() == 'kevin3627713@gmail.com', 'matches_account2_trimmed=', isinstance(observed_email, str) and observed_email.strip().lower() == '3627713050@qq.com')
     if data.get('code') != 0 or not isinstance(account, dict) or account.get('email', '').lower() != '3627713050@qq.com':
         raise SessionError('Replacement account authentication or identity check failed; nothing saved')
     print('stage: identity-confirmed')
