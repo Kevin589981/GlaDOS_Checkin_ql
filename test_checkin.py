@@ -138,6 +138,15 @@ class CookieTests(OfflineTest):
 
 
 class ClientTests(OfflineTest):
+    def setUp(self):
+        super().setUp()
+        # Challenge behavior is exercised separately below. Keep the existing
+        # session/response regressions focused on the check-in and status calls.
+        self.enter(patch.object(
+            checkin.GlaDOSCheckin, "prepare_checkin",
+            side_effect=lambda cookie, agent: ({"token": "glados.cloud"}, cookie),
+        ))
+
     def request_pair(self, post=None, get=None):
         post_mock = self.enter(
             patch("checkin.requests.post", return_value=post or response(OK))
@@ -273,6 +282,101 @@ class ClientTests(OfflineTest):
         self.assertNotIn("old-session", checkin.safe_message("echo " + OLD, OLD))
 
 
+class ChallengeTests(OfflineTest):
+    def setUp(self):
+        super().setUp()
+        self.sleep = self.enter(patch("checkin.time.sleep"))
+        self.challenge = {"code": 0, "nonce": "offline-nonce", "ttl": 300000}
+
+    def test_official_payload_order_and_cookie_rotation(self):
+        calls = []
+
+        def get(url, **kwargs):
+            calls.append((url, kwargs))
+            if url.endswith("/challenge"):
+                return response(self.challenge, NEXT)
+            return response(STATUS, FINAL)
+
+        def post(url, **kwargs):
+            self.sleep.assert_called_once_with(2.5)
+            calls.append((url, kwargs))
+            return response(OK)
+
+        with patch("checkin.requests.get", side_effect=get), patch(
+            "checkin.requests.post", side_effect=post
+        ):
+            result = checkin.GlaDOSCheckin([OLD]).checkin(OLD, "Browser-A")
+        self.assertTrue(result.success)
+        self.assertEqual(result.updated_cookie, FINAL)
+        self.assertEqual([url.rsplit("/", 1)[-1] for url, _ in calls],
+                         ["challenge", "checkin", "status"])
+        self.assertEqual(calls[1][1]["json"], {
+            "token": "glados.cloud", "nonce": "offline-nonce",
+            "proof": "3ae390cc6763f7841e3826282cd27140f3a39e6eb91c9f66bfd882a39ead6d2e",
+            "tsState": "off",
+        })
+        for _, kwargs in calls:
+            self.assertFalse(kwargs["allow_redirects"])
+            self.assertEqual(kwargs["headers"]["user-agent"], "Browser-A")
+        self.assertEqual(calls[0][1]["headers"]["cookie"], OLD)
+        self.assertEqual(calls[1][1]["headers"]["cookie"], NEXT)
+        self.assertEqual(calls[2][1]["headers"]["cookie"], NEXT)
+
+    def test_turnstile_stops_without_spending_checkin(self):
+        with patch("checkin.requests.get", return_value=response({
+            **self.challenge, "turnstile": {"sitekey": "public-key"},
+        })), patch("checkin.requests.post") as post:
+            result = checkin.GlaDOSCheckin([OLD]).checkin(OLD)
+        self.assertFalse(result.success)
+        self.assertIn("Turnstile", result.message)
+        self.assertIn("https://glados.cloud/console/checkin", result.message)
+        post.assert_not_called()
+        self.sleep.assert_not_called()
+
+    def test_invalid_or_denied_challenge_never_falls_back(self):
+        for body in [DENIED, {}, {"code": 0}, {"code": 0, "nonce": 42},
+                     {"code": 0, "nonce": ""}, {**self.challenge, "code": 4}]:
+            with self.subTest(body=body), patch("checkin.requests.get", return_value=response(body)), patch("checkin.requests.post") as post:
+                result = checkin.GlaDOSCheckin([OLD]).checkin(OLD)
+            self.assertFalse(result.success)
+            post.assert_not_called()
+
+    def test_challenge_network_and_parsing_errors_are_sanitized(self):
+        bad_json = response({})
+        bad_json._content = b"not-json"
+        for value in [response({}, status=403), response({}, status=302), bad_json,
+                      requests.RequestException(OLD)]:
+            with self.subTest(value=type(value).__name__), patch(
+                "checkin.requests.get", side_effect=[value]
+            ), patch("checkin.requests.post") as post:
+                result = checkin.GlaDOSCheckin([OLD]).checkin(OLD)
+            self.assertFalse(result.success)
+            self.assertNotIn("old-session", repr(result))
+            post.assert_not_called()
+
+    def test_each_account_gets_its_own_challenge_and_block_does_not_skip_others(self):
+        with patch("checkin.requests.get", side_effect=[
+            response({**self.challenge, "turnstile": True}),
+            response({**self.challenge, "nonce": "second-nonce"}),
+            response(STATUS),
+        ]) as get, patch("checkin.requests.post", return_value=response(OK)) as post:
+            client = checkin.GlaDOSCheckin([OLD, SECOND])
+            results = client.batch_checkin()
+        self.assertEqual([r.success for r in results], [False, True])
+        self.assertEqual(get.call_args_list[1].kwargs["headers"]["cookie"], SECOND)
+        post.assert_called_once()
+        self.assertEqual(post.call_args.kwargs["json"]["nonce"], "second-nonce")
+
+    def test_post_is_not_retried_on_unknown_outcome(self):
+        with patch("checkin.requests.get", return_value=response(self.challenge)) as get, patch(
+            "checkin.requests.post", side_effect=requests.Timeout("unknown outcome")
+        ) as post:
+            result = checkin.GlaDOSCheckin([OLD]).checkin(OLD)
+        self.assertFalse(result.success)
+        self.assertEqual(get.call_count, 1)
+        self.assertEqual(post.call_count, 1)
+
+
 class StoreTests(OfflineTest):
     def setUp(self):
         super().setUp()
@@ -368,6 +472,10 @@ class RunTests(OfflineTest):
     def setUp(self):
         super().setUp()
         os.environ.update(ENV)
+        self.enter(patch.object(
+            checkin.GlaDOSCheckin, "prepare_checkin",
+            side_effect=lambda cookie, agent: ({"token": "glados.cloud"}, cookie),
+        ))
         self.store = self.enter(patch("checkin.GitHubCookieStore")).return_value
 
     def test_partial_failure_still_saves_verified_account_and_fails_job(self):
@@ -465,3 +573,4 @@ class RunTests(OfflineTest):
 
 if __name__ == "__main__":
     unittest.main()
+

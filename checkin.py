@@ -2,8 +2,10 @@
 # -*- coding: utf-8 -*-
 """GLaDOS 签到：验证响应、接收会话轮换并保存给下一次 Actions 运行。"""
 
+import hashlib
 import os
 import re
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -76,6 +78,7 @@ class GlaDOSCheckin:
         self.updated_cookies = list(cookies)
         self.origin = "https://glados.cloud"
         self.checkin_url = f"{self.origin}/api/user/checkin"
+        self.challenge_url = f"{self.checkin_url}/challenge"
         self.state_url = f"{self.origin}/api/user/status"
         self.referer = f"{self.origin}/console/checkin"
         self.payload = {"token": "glados.cloud"}
@@ -118,16 +121,42 @@ class GlaDOSCheckin:
             raise SessionError("接口返回格式错误")
         return data
 
+    def prepare_checkin(self, cookie, user_agent):
+        """Use a fresh challenge; never fall back to a token-only check-in."""
+        response = requests.get(
+            self.challenge_url,
+            headers=self.headers(cookie, user_agent),
+            timeout=20,
+            allow_redirects=False,
+        )
+        challenge = self.response_data(response)
+        cookie = merge_response_cookies(cookie, response, self.challenge_url)
+        if str(challenge.get("code")) == "-2":
+            raise SessionError("会话已失效或被撤销，请重新登录并更新完整 Cookie")
+        nonce = challenge.get("nonce")
+        if str(challenge.get("code")) != "0" or not isinstance(nonce, str) or not nonce:
+            raise SessionError("未取得有效签到 challenge，未提交签到，请稍后检查官网")
+        if challenge.get("turnstile"):
+            raise SessionError(
+                "本次签到需要 Cloudflare Turnstile 验证，未提交签到；"
+                "请打开 https://glados.cloud/console/checkin 完成网页验证和签到"
+            )
+        # Match the public web client: allow 2.5 seconds after challenge receipt.
+        time.sleep(2.5)
+        proof = hashlib.sha256((nonce + ".glados-observe-v1").encode("utf-8")).hexdigest()
+        return {**self.payload, "nonce": nonce, "proof": proof, "tsState": "off"}, cookie
+
     def checkin(self, cookie: str, user_agent=None) -> CheckinResult:
         original = cookie
         try:
             cookie = cookie_header(parse_cookie(cookie))
             mask_cookie(cookie)
             user_agent = user_agent or self.useragent
+            payload, cookie = self.prepare_checkin(cookie, user_agent)
             response = requests.post(
                 self.checkin_url,
                 headers=self.headers(cookie, user_agent),
-                json=self.payload,
+                json=payload,
                 timeout=20,
                 allow_redirects=False,
             )
@@ -299,3 +328,4 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
