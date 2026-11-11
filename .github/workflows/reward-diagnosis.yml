@@ -1,0 +1,22 @@
+name: Read-only reward diagnosis
+on:
+  push:
+    branches: [diagnose/reward-read-only]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install requests==2.31.0
+      - name: Query account 1 reward factors only (no check-in)
+        env:
+          GR_COOKIE: ${{ secrets.GR_COOKIE }}
+          cookie1: ${{ secrets.cookie1 }}
+          GR_USER_AGENT: ${{ secrets.GR_USER_AGENT }}
+        run: python diagnose_reward.py
