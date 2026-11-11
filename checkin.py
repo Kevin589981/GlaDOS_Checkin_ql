@@ -136,15 +136,13 @@ class GlaDOSCheckin:
         nonce = challenge.get("nonce")
         if str(challenge.get("code")) != "0" or not isinstance(nonce, str) or not nonce:
             raise SessionError("未取得有效签到 challenge，未提交签到，请稍后检查官网")
-        if challenge.get("turnstile"):
-            raise SessionError(
-                "本次签到需要 Cloudflare Turnstile 验证，未提交签到；"
-                "请打开 https://glados.cloud/console/checkin 完成网页验证和签到"
-            )
+        # A widget configuration is not itself a rejected check-in. Submit the
+        # ordinary nonce/proof request and let the server decide; never invent
+        # a Turnstile token or claim an unobserved verification state.
         # Match the public web client: allow 2.5 seconds after challenge receipt.
         time.sleep(2.5)
         proof = hashlib.sha256((nonce + ".glados-observe-v1").encode("utf-8")).hexdigest()
-        return {**self.payload, "nonce": nonce, "proof": proof, "tsState": "off"}, cookie
+        return {**self.payload, "nonce": nonce, "proof": proof}, cookie
 
     def checkin(self, cookie: str, user_agent=None) -> CheckinResult:
         original = cookie
@@ -328,4 +326,5 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 

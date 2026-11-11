@@ -350,8 +350,9 @@ python checkin.py
 
 签到前会获取一次性的 challenge，按官网等待至少 2.5 秒后提交 nonce / proof。
 若 challenge 不可用，不会降级为旧的 token-only 请求，以免提前消耗当日签到机会。
-若官网要求 Cloudflare Turnstile，脚本停止该账号的签到并在现有通知中提示；
-请打开 https://glados.cloud/console/checkin 完成网页验证和签到，脚本不会伪造或跳过验证。
+challenge 中的 Turnstile 控件配置不直接视为签到拒绝；脚本提交普通 nonce / proof 请求，
+不伪造 Turnstile token 或 tsState，由服务端判断是否接受。若服务端要求验证或拒绝请求，
+停止该账号并保留错误信息，请到官网完成正常验证。
 会话轮换仍在账号状态验证后保存，多个账号分别处理。
 
 本地离线回归测试：`python -m unittest discover -v`。测试不访问真实账号或触发签到。

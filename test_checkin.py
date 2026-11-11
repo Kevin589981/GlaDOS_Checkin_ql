@@ -313,7 +313,6 @@ class ChallengeTests(OfflineTest):
         self.assertEqual(calls[1][1]["json"], {
             "token": "glados.cloud", "nonce": "offline-nonce",
             "proof": "3ae390cc6763f7841e3826282cd27140f3a39e6eb91c9f66bfd882a39ead6d2e",
-            "tsState": "off",
         })
         for _, kwargs in calls:
             self.assertFalse(kwargs["allow_redirects"])
@@ -322,16 +321,27 @@ class ChallengeTests(OfflineTest):
         self.assertEqual(calls[1][1]["headers"]["cookie"], NEXT)
         self.assertEqual(calls[2][1]["headers"]["cookie"], NEXT)
 
-    def test_turnstile_stops_without_spending_checkin(self):
+    def test_widget_config_does_not_invent_or_block_verification(self):
+        with patch("checkin.requests.get", side_effect=[response({
+            **self.challenge, "turnstile": {"sitekey": "public-key"},
+        }), response(STATUS)]), patch("checkin.requests.post", return_value=response(OK)) as post:
+            result = checkin.GlaDOSCheckin([OLD]).checkin(OLD)
+        self.assertTrue(result.success)
+        post.assert_called_once()
+        self.assertNotIn("tsState", post.call_args.kwargs["json"])
+        self.assertNotIn("turnstile", post.call_args.kwargs["json"])
+
+    def test_server_verification_denial_stops_without_retry(self):
         with patch("checkin.requests.get", return_value=response({
             **self.challenge, "turnstile": {"sitekey": "public-key"},
-        })), patch("checkin.requests.post") as post:
+        })) as get, patch("checkin.requests.post", return_value=response({
+            "code": 4, "message": "Turnstile verification required",
+        })) as post:
             result = checkin.GlaDOSCheckin([OLD]).checkin(OLD)
         self.assertFalse(result.success)
         self.assertIn("Turnstile", result.message)
-        self.assertIn("https://glados.cloud/console/checkin", result.message)
-        post.assert_not_called()
-        self.sleep.assert_not_called()
+        self.assertEqual(get.call_count, 1)
+        post.assert_called_once()
 
     def test_invalid_or_denied_challenge_never_falls_back(self):
         for body in [DENIED, {}, {"code": 0}, {"code": 0, "nonce": 42},
@@ -356,7 +366,7 @@ class ChallengeTests(OfflineTest):
 
     def test_each_account_gets_its_own_challenge_and_block_does_not_skip_others(self):
         with patch("checkin.requests.get", side_effect=[
-            response({**self.challenge, "turnstile": True}),
+            response({**self.challenge, "code": -2}),
             response({**self.challenge, "nonce": "second-nonce"}),
             response(STATUS),
         ]) as get, patch("checkin.requests.post", return_value=response(OK)) as post:
@@ -573,4 +583,5 @@ class RunTests(OfflineTest):
 
 if __name__ == "__main__":
     unittest.main()
+
 
