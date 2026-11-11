@@ -7,6 +7,8 @@
 name: "GLADOS airport Checkin"
 
 on:
+  push:
+    branches: [fix/challenge-server-response]
   schedule:
     - cron: "0 23 * * *"    # 23:00 UTC = 07:00 UTC+8
   workflow_dispatch:
@@ -126,3 +128,4 @@ jobs:
               "source": "glados",
               "timestamp": "${{ github.event.head_commit.timestamp || github.run_id }}"
             }
+
